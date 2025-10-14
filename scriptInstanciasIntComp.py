@@ -4,24 +4,6 @@ import os
 
 def matriz_delays(d_matriz, n, d_intervalo, n_rest_prec, k):
 
-    # preenche a matriz 
-    # for i in range(n):
-    #     for j in range(i):
-    #         #sorteia se vai preencher
-    #         if random.random() < 0.3:
-    #             # Sorteia se i->j ou j->i terá delay
-    #             if random.random() < 0.5 and i != j:
-    #                 d_matriz[i][j] = random.randint(d_intervalo[0], d_intervalo[1])
-    #                 d_matriz[j][i] = 0
-    #             else:
-    #                 d_matriz[j][i] = random.randint(d_intervalo[0], d_intervalo[1])
-    #                 d_matriz[i][j] = 0
-    #             k+=1
-    #             if(k == n_rest_prec):break
-    #     if(k == n_rest_prec):break
-    
-    # if(k < n_rest_prec):matriz_delays(d_matriz, n, d_intervalo, n_rest_prec, k)
-    
     while(k < n_rest_prec):
         i = random.randint(0, n-1)
         j = random.randint(0, n-1)
@@ -169,9 +151,8 @@ if __name__ == "__main__":
     nome_instancia = "instancia5_grupo1.txt"
 
     # Salvar em arquivo
-    salvar_instancia(instancia, nome_instancia)
-    
-    print(f"\nInstância salva em '{nome_instancia}'")
+    #salvar_instancia(instancia, nome_instancia)
+    #print(f"\nInstância salva em '{nome_instancia}'")
 
     print()
     print("Cara da instancia: \n")
