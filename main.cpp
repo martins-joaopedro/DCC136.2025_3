@@ -32,7 +32,7 @@ vector<int> randomized_heuristic(map<int, vector<int>> dependencies, vector<int>
             continue;
         
         // se aquele job ta sofrendo alguma restrição de delay de outro 
-        if(delays[i] != 0)
+        if(delays[i] > 0)
             continue; 
 
         // se o job não tem dependencias e não está na LC
@@ -54,28 +54,13 @@ vector<int> randomized_heuristic(map<int, vector<int>> dependencies, vector<int>
             LC.push_back(i);
     }
 
-    // se a lista ta vazia e ainda possui jobs que não podem ser processados e ainda não acabou 
-    int minTimeNeededToWait;
-    if(LC.empty() and (N != LC.size() + sol.size())) {
-        for(int i=0; i<N; i++) 
-            if(delays[i] != 0)
-                minTimeNeededToWait = delays[i];
-
-        for(int i=0; i<N; i++) 
-            if(delays[i] != 0)
-                minTimeNeededToWait = min(delays[i], minTimeNeededToWait);
-        Job lastJob = sol[sol.size() -1];
-        sol.push_back(Job{0, lastJob.end, lastJob.end + minTimeNeededToWait});
-    }
-
-
     int n = LC.size();
     // peso do delay, quantidade de dependentes e setups
     int delayWeight = 1;
     int dependenciesWeight = 1;
     int setupWeight = 1;
 
-    int scores[n] = {0};
+    
     //int delays[n] = {0};
     vector<pair<int, int>> sorting; 
     
@@ -86,21 +71,19 @@ vector<int> randomized_heuristic(map<int, vector<int>> dependencies, vector<int>
         int maxDelay = 0;
         int dependents = 0;
 
+        cout << ">>> job ID " << job_id << endl; 
+
         // varre a coluna -> pontua quantos jobs aquele job libera e o maior delay que ele oferece 
         for(int j = 0; j < N; j++) {
             if(D[j][job_id] != 0)
                 dependents++;
             maxDelay = max(maxDelay, D[j][job_id]);
-            // como que eu vou atribuir o valor de delay + setup + process aqui pra saber se um job pode ser executado?
-            //delays[j] = maxDelay;
         }
         
         cout << "job: " << job_id << " " << dependents << " " << maxDelay << endl;
 
-        scores[job_id] += maxDelay * delayWeight;
-        scores[job_id] += dependents * dependenciesWeight;
-
-        sorting.push_back(make_pair(job_id, scores[job_id]));
+        int score = maxDelay * delayWeight + dependents * dependenciesWeight;
+        sorting.push_back(make_pair(job_id, score));
     }
 
     sort(sorting.begin(), sorting.end(), 
@@ -140,8 +123,10 @@ int main() {
     };
     
     vector<vector<int>> D(N, vector<int>(N, 0));
-    D[3][0] = 3; 
+    D[3][0] = 12; 
+    D[1][0] = 12; 
     D[3][2] = 8; 
+    D[4][2] = 4; 
     D[4][2] = 4; 
     
     vector<int> ILC;
@@ -169,48 +154,75 @@ int main() {
         for(auto v : dependencies[i])
             cout << "job " << i << " e dependente de " << v << endl;
 
+    int currentTime = 0;
+
     do {
-        int alpha = 0;
+        
         ILC = randomized_heuristic(dependencies, delays, ILC, sol, N, S, D, T);
+        
+        // se a lista ta vazia e ainda possui jobs que não podem ser processados e ainda não acabou 
+        int minTimeNeededToWait = INT_MAX;
+        bool isNeededToWait = false;
+        if(ILC.empty() and (N != sol.size() )) {
+            for(int i=0; i<N; i++) 
+                if(delays[i] != 0) {
+                    minTimeNeededToWait = min(delays[i], minTimeNeededToWait);
+                    isNeededToWait = true;
+                }
+
+            cout << "delay minimo pra se esperar " << minTimeNeededToWait << endl;
+        }
+        
+        if (isNeededToWait) {
+            Job idleJob{-1, currentTime, currentTime + minTimeNeededToWait}; // Job especial para tempo ocioso
+            sol.push_back(idleJob);
+            currentTime += minTimeNeededToWait;
+            
+            for(int i = 0; i < N; i++) {
+                if(delays[i] > 0) {
+                    delays[i] = max(0, delays[i] - minTimeNeededToWait);
+                }
+            }
+            continue; // Volta para recalculcar ILC
+        }
+
+        int alpha = 0;
         int j = ILC[alpha];
+        ILC.erase(ILC.begin() + alpha);
 
         //cria o job para add
         Job selectedJob;
+        int startTime = currentTime;
+        int completionTime;
+
         if(sol.empty()) {
-            int completitionTime = T[j];
-            selectedJob = {j, 0, completitionTime};
-            
+            completionTime = startTime + T[j]; 
         } else {
-            // TODO: e se tiver que pagar algum delay???? ainda nao faz isso!!!
-            Job lastJobCompleted = sol[sol.size() - 1]; 
-            // começa no final do ultimo job 
-            int startTime = lastJobCompleted.end;
-            int completitionTime = startTime + S[lastJobCompleted.name][j] + T[j];
-            selectedJob = {j, startTime, completitionTime};
+            Job lastJob = sol.back();
+            // Se o último job foi tempo ocioso, setup é 0
+            int setup = (lastJob.name == -1) ? 0 : S[lastJob.name][j];
+            completionTime = startTime + setup + T[j];
         }
 
+        selectedJob = {j, startTime, completionTime};
         sol.push_back(selectedJob);
+        currentTime = completionTime; 
 
         // updateDelayConstraints
         int name = selectedJob.name;
-        int startTime = selectedJob.start;
-        int endTime = selectedJob.end;
-        int duration = endTime - startTime;
+        //int startTime = selectedJob.start;
+        //int endTime = selectedJob.end;
+        int duration = completionTime - startTime;
 
 
         //preciso falar que o tempo ta passando -> delays
         for(int i=0; i<N; i++) {
-            cout << "passou se " << duration << " tempos" << endl; 
-            int count = max(0, (delays[i] - duration));
-            cout << "Conta " << count << endl; 
-            delays[i] = count;
+            delays[i] = max(0, (delays[i] - duration));
         }
 
         for (int j=0; j<N; j++) {
             // se existe uma restrição maior daquele job para um outro aplico 
             if(D[j][name] != 0) {
-                // aplico a restrição máxima
-                cout << "outra rest " << D[j][name] << endl;
                 delays[j] = max(delays[j], D[j][name]);
             }
         }
@@ -225,8 +237,9 @@ int main() {
         cout << endl;
 
 
-        ILC.erase(ILC.begin() + alpha);
-    } while (!ILC.empty());
+        
+
+    } while (!ILC.empty() || N != sol.size());
 
     // sol deve ser uma fila (ou map) de pair que é o job e suas informações de makespan
     // usar isso para verificar se o job x pode ser add para ser feito
