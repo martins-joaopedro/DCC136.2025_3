@@ -9,7 +9,7 @@ def matriz_delays(d_matriz, n, d_intervalo, n_rest_prec, k):
         j = random.randint(0, n-1)
         if(i != j and d_matriz[i][j] == 0 and d_matriz[j][i] == 0):
             d_matriz[i][j] = random.randint(d_intervalo[0], d_intervalo[1])
-            d_matriz[j][i] = 0
+            d_matriz[j][i] = -1
             k+=1
 
     return d_matriz
@@ -136,11 +136,11 @@ def imprimir_instancia(instancia):
 if __name__ == "__main__":
 
     # parametros
-    n_jobs = 20
-    n_restricoes_precedencia = 15
-    p_range = (10, 20)    
-    s_range = (5, 10)      
-    d_range = (20, 40)      
+    n_jobs = 5
+    n_restricoes_precedencia = 3
+    p_range = (1, 5)    
+    s_range = (1, 5)      
+    d_range = (0, 8)      
     
     # Gerar instância
     instancia = gerar_instancia_grafo(n_jobs, p_range, s_range, d_range, n_restricoes_precedencia)#, seed=42)
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     nome_instancia = "instancia5_grupo1.txt"
 
     # Salvar em arquivo
-    #salvar_instancia(instancia, nome_instancia)
+    salvar_instancia(instancia, nome_instancia)
     #print(f"\nInstância salva em '{nome_instancia}'")
 
     print()
