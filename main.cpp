@@ -1,6 +1,101 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <stdexcept>
 #include <bits/stdc++.h>
 using namespace std;
+
+struct Grafo
+{
+    int N_size;
+
+    vector<int> processing_time;
+
+    vector<vector<int>> setup_time;
+    vector<vector<int>> delay_time;
+};
+
+/**
+ * @brief Reads and parses infos from a text file following the generalized structure:
+ * (1st value = N, then N individual values, then two NxN matrices).
+ *
+ * @param filename The path to the text file to read.
+ * @return Grafo A struct containing the parsed size, N values, and matrices.
+ */
+Grafo readDataFromFile(const string& filename)
+{
+    Grafo infos;
+    ifstream inputFile(filename);
+
+    if (!inputFile.is_open())
+    {
+        cerr << "Error: Could not open file " << filename << endl;
+        return infos;
+    }
+
+    // 1. Le o numero de jobs N
+    if (!(inputFile >> infos.N_size))
+    {
+        cerr << "Error: Could not read the size parameter N." << endl;
+        inputFile.close();
+        return infos;
+    }
+    
+    // Confere se e um tamanho valido
+    if (infos.N_size <= 0) {
+        cerr << "Error: N must be a positive integer. Read N = " << infos.N_size << endl;
+        inputFile.close();
+        return infos;
+    }
+
+    const int N = infos.N_size;
+
+    // 2. Le os N processing_times
+    infos.processing_time.resize(N);
+    for (int i = 0; i < N; ++i)
+    {
+        if (!(inputFile >> infos.processing_time[i]))
+        {
+            cerr << "Error: Could not read individual value #" << i + 1 << " out of " << N << "." << endl;
+            inputFile.close();
+            return infos;
+        }
+    }
+
+    // 3. Auxiliar para ler as matrizes
+    auto read_matrix = [&](vector<vector<int>>& matrix, const string& matrix_name) {
+        matrix.resize(N, vector<int>(N));
+        for (int i = 0; i < N; ++i)
+        {
+            for (int j = 0; j < N; ++j)
+            {
+                if (!(inputFile >> matrix[i][j]))
+                {
+                    cerr << "Error: Could not read " << matrix_name << " element at (" << i + 1 << ", " << j + 1 << "). File ended prematurely." << endl;
+                    return false; 
+                }
+            }
+        }
+        return true; 
+    };
+
+    // 4. Le as 2 matrizes
+    if (!read_matrix(infos.setup_time, "Matriz Setup")) {
+        inputFile.close();
+        return infos;
+    }
+    
+    if (!read_matrix(infos.delay_time, "Matrix Delay")) {
+        inputFile.close();
+        return infos;
+    }
+
+
+    inputFile.close();
+    return infos;
+}
 
 struct Job {
     int id;
@@ -217,7 +312,7 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
 }
 
 
-int main() {
+/*int main() {
 
     // le as informações do job
     int N = 5;
@@ -264,6 +359,47 @@ int main() {
         } else {
             cout << "J" << job.id << ": " << job.start << " - " << job.end << endl;
         }
+    }
+
+    return 0;
+}*/
+
+int main(int argc, char* argv[])
+{
+    string filename = argv[1];
+    
+    Grafo result = readDataFromFile(filename);
+
+    if (result.N_size > 0) {
+        const int N = result.N_size;
+        
+        cout << "Numero Jobs N: " << N << endl;
+
+        cout << "Processing Time (" << N << " total): ";
+        for (size_t i = 0; i < result.processing_time.size(); ++i) {
+            cout << result.processing_time[i] << (i == result.processing_time.size() - 1 ? "" : ", ");
+        }
+        cout << endl;
+
+        // Print Matrix 1
+        cout << "\nMatriz Setup (" << N << "x" << N << "):" << endl;
+        for (const auto& row : result.setup_time) {
+            for (size_t i = 0; i < row.size(); ++i) {
+                cout << row[i] << (i == row.size() - 1 ? "" : "\t"); // Using tab for alignment
+            }
+            cout << endl;
+        }
+
+        // Print Matrix 2
+        cout << "\nMatriz Delay (" << N << "x" << N << "):" << endl;
+        for (const auto& row : result.delay_time) {
+            for (size_t i = 0; i < row.size(); ++i) {
+                cout << row[i] << (i == row.size() - 1 ? "" : "\t");
+            }
+            cout << endl;
+        }
+    } else {
+        cout << "File could not be parsed successfully (N was 0 or file could not be opened)." << endl;
     }
 
     return 0;
