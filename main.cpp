@@ -238,53 +238,61 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
     }
 
     int n = LC.size();
-    // peso do delay, quantidade de dependentes e setups
-    int delayWeight = 1;
-    int dependenciesWeight = 1;
-    int setupWeight = 0;
+
+    float delayWeight = 0.1;        // Prioridade dos adiantar quem poderia travar
+    float dependenciesWeight = 0.3; // Prioridade em liberar outros jobs
+    float savingWeight = 0.5;       // Prioridade em realizar economia em relação aos outros candidatos
+    float setupWeight = 2;          // Prioridade em menor setup em relação ao job anterior
 
     vector<pair<int, int>> sorting;
 
-    for (auto job : LC)
-    {
+    for (auto job : LC) {
         int job_id = job.id;
         int maxDelay = 0;
-        int dependents = job.dependents.size();
-        int setup = 0;
+        float dependents = job.dependents.size();
+        float saving = 0;
+        float setupFromPrevious = 0;
 
         // pontua o maior delay que um job oferece
         for (int j = 0; j < N; j++)
-        {
-            maxDelay = max(maxDelay, D[j][job_id]);
+            maxDelay = max(maxDelay, D[job_id][j]);
+
+        // setup em relação ao job anterior
+        if (!sol.empty()) {
+            int lastJobId = sol.back().id;
+            setupFromPrevious = S[lastJobId][job_id];
         }
 
-        // TODO: corrigir essa relação
-        /* // vejo em relação aos outros jobs o quanto economiza passando por ele
-        for(auto jobI : LC) {
-            for(auto jobJ : LC) {
-                if(job_id == jobI.id || job_id == jobJ.id || jobI.id == jobJ.id)
-                    continue;
-                int directCost = S[jobI.id][jobJ.id];
-                int viaJobCost = S[jobI.id][job_id] + S[job_id][jobJ.id];
-                cout << "\n>>> TESTANDO CAMINHOS PELO JOB " << job_id << endl;
-                cout << "DIRETO DO JOB I " << jobI.id << " PARA O JOB J " << jobJ.id << " => " << directCost << endl;
-                cout << "ATALHO DE I -> J PASSANDO PELO JOB " << job_id << " => " << viaJobCost << endl;
-                setup += (directCost - viaJobCost);
-            }
-        } */
+        // calculo potencial economia
+        for(Job jobX : LC) {
+            if(job_id == jobX.id)
+                continue;
 
-        // pontuação ajustável para experimentar o que impacta mais nas soluções
+            int directCost = S[job_id][jobX.id];    // job atual -> job X
+            int inverseCost = S[jobX.id][job_id];   // job X -> job atual
+            // Economia se job atual vier ANTES do job X
+            // Valor positivo = economiza se vier antes
+            // Valor negativo = economiza se vier depois
+            saving += (inverseCost - directCost);
+        }
+
         cout << "\n\n__________SCORE JOB " << job_id << "__________" << endl;
-        cout << ">>> DELAY " << maxDelay << endl;
-        cout << ">>> DEPENDENTES " << dependents << endl;
-        cout << ">>> SETUP " << setup << endl;
-        int score = maxDelay * delayWeight + dependents * dependenciesWeight + setup * setupWeight;
+        cout << ">>> DELAY: " << maxDelay << endl;
+        cout << ">>> DEPENDENTES: " << dependents << endl;
+        cout << ">>> SETUP DO ANTERIOR: " << setupFromPrevious << endl;
+        cout << ">>> ECONOMIA MÉDIA: " << saving << endl;
+
+        float score = maxDelay * delayWeight
+            + dependents * dependenciesWeight
+            + saving * savingWeight
+            - setupFromPrevious * setupWeight; // subtrai pq menor setup -> mais a frente  
+        
         cout << ">>>>> SCORE FINAL: " << score << endl;
         sorting.push_back(make_pair(job_id, score));
     }
 
     sort(sorting.begin(), sorting.end(),
-         [](const pair<int, int> &a, const pair<int, int> &b)
+         [](const pair<int, float> &a, const pair<int, float> &b)
          {
              return a.second > b.second;
          });
@@ -292,6 +300,17 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
     vector<Job> sorted;
     for (const auto &par : sorting)
         sorted.push_back(allJobs[par.first]);
+    
+    // melhor heurística que so funciona a partir do primeiro candidato na sol
+    // procura menor setup em relação ao anterior 🤡🤡🤡🤡🤡
+    if (!sol.empty()) {
+        Job lastJob = sol.back();
+        sort(sorted.begin(), sorted.end(), 
+            [&](const Job& a, const Job& b) {
+                return S[lastJob.id][a.id] < S[lastJob.id][b.id];
+            });
+    }
+
     return sorted;
 }
 
@@ -308,9 +327,7 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     vector<Job> LC;
     vector<Job> sol;
 
-    do
-    {
-
+    do {
         LC = randomized_heuristic(allJobs, delays, LC, sol, N, S, D, T);
 
         cout << "\n\n>>> LISTA ORDENADA: ";
@@ -415,60 +432,7 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     return sol;
 }
 
-/*int main() {
-
-    // le as informações do job
-    int N = 5;
-    vector<int> T = {2, 5, 2, 1, 1};
-
-    vector<vector<int>> S = {
-        {0, 4, 5, 3, 5},
-        {2, 0, 4, 3, 2},
-        {5, 5, 0, 2, 2},
-        {1, 3, 2, 0, 5},
-        {4, 3, 1, 1, 0}
-    };
-
-    vector<vector<int>> D(N, vector<int>(N, 0));
-    D[3][0] = 3;
-    D[3][2] = 8;
-    D[4][2] = 4;
-
-    // inicia todas as informações do job
-    map<int, Job> allJobs;
-
-    for(int i = 0; i < N; i++) {
-        Job job;
-        job.id = i;
-        job.start = 0;
-        job.end = 0;
-        for(int j = 0; j < N; j++) {
-            if(D[i][j] != 0)
-                job.dependencies.push_back(j);
-            if(D[j][i] != 0)
-                job.dependents.push_back(j);
-        }
-        allJobs[i] = job;
-    }
-
-    // makespan
-    float alpha = 0.5;
-    vector<Job> sol = randomized_greedy(N, alpha, allJobs, S, D, T);
-
-    cout << "\n\nSOLUCAO FINAL:" << endl;
-    for(Job job : sol) {
-        if(job.id == -1) {
-            cout << "IDLE: " << job.start << " - " << job.end << endl;
-        } else {
-            cout << "J" << job.id << ": " << job.start << " - " << job.end << endl;
-        }
-    }
-
-    return 0;
-}*/
-
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     string filename = argv[1];
 
     Instance result = readDataFromFile(filename);
@@ -520,7 +484,6 @@ int main(int argc, char *argv[])
             job.end = 0;
             for (int j = 0; j < N; j++)
             {
-
                 // DEPENDENCIA: DE QUEM O JOB I DEPENDE ( J -> I, JOB I DEPENDE DO J)
                 if (result.delay_time[j][i] > noDependentConstraintValue)
                     job.dependencies.push_back(j);
@@ -539,7 +502,7 @@ int main(int argc, char *argv[])
             cout << "Job " << id << " -> " << job.dependencies.size() << " - " << job.dependents.size() << endl;
         }
 
-        vector<float> alphas = {0.2, 0.5, 0.8};
+        vector<float> alphas = {0.1, 0.3, 0.5};
         for(auto alpha : alphas) {
 
             // makespan
