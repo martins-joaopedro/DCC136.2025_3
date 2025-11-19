@@ -4,6 +4,11 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <stdexcept>
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -17,13 +22,6 @@ struct Grafo
     vector<vector<int>> delay_time;
 };
 
-/**
- * @brief Reads and parses infos from a text file following the generalized structure:
- * (1st value = N, then N individual values, then two NxN matrices).
- *
- * @param filename The path to the text file to read.
- * @return Grafo A struct containing the parsed size, N values, and matrices.
- */
 Grafo readDataFromFile(const string& filename)
 {
     Grafo infos;
