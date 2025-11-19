@@ -7,90 +7,8 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-struct Grafo
+struct Job
 {
-    int N_size;
-
-    vector<int> processing_time;
-
-    vector<vector<int>> setup_time;
-    vector<vector<int>> delay_time;
-};
-
-Grafo readDataFromFile(const string& filename)
-{
-    Grafo infos;
-    ifstream inputFile(filename);
-
-    if (!inputFile.is_open())
-    {
-        cerr << "Error: Could not open file " << filename << endl;
-        return infos;
-    }
-
-    // 1. Le o numero de jobs N
-    if (!(inputFile >> infos.N_size))
-    {
-        cerr << "Error: Could not read the size parameter N." << endl;
-        inputFile.close();
-        return infos;
-    }
-    
-    // Confere se e um tamanho valido
-    if (infos.N_size <= 0) {
-        cerr << "Error: N must be a positive integer. Read N = " << infos.N_size << endl;
-        inputFile.close();
-        return infos;
-    }
-
-    const int N = infos.N_size;
-
-    // 2. Le os N processing_times
-    infos.processing_time.resize(N);
-    for (int i = 0; i < N; ++i)
-    {
-        if (!(inputFile >> infos.processing_time[i]))
-        {
-            cerr << "Error: Could not read individual value #" << i + 1 << " out of " << N << "." << endl;
-            inputFile.close();
-            return infos;
-        }
-    }
-
-    // 3. Auxiliar para ler as matrizes
-    auto read_matrix = [&](vector<vector<int>>& matrix, const string& matrix_name) {
-        matrix.resize(N, vector<int>(N));
-        for (int i = 0; i < N; ++i)
-        {
-            for (int j = 0; j < N; ++j)
-            {
-                if (!(inputFile >> matrix[i][j]))
-                {
-                    cerr << "Error: Could not read " << matrix_name << " element at (" << i + 1 << ", " << j + 1 << "). File ended prematurely." << endl;
-                    return false; 
-                }
-            }
-        }
-        return true; 
-    };
-
-    // 4. Le as 2 matrizes
-    if (!read_matrix(infos.setup_time, "Matriz Setup")) {
-        inputFile.close();
-        return infos;
-    }
-    
-    if (!read_matrix(infos.delay_time, "Matrix Delay")) {
-        inputFile.close();
-        return infos;
-    }
-
-
-    inputFile.close();
-    return infos;
-}
-
-struct Job {
     int id;
     int start;
     int end;
@@ -102,47 +20,215 @@ struct Job {
     vector<int> dependents;
 
     // comparação feita so com o nome
-    bool operator==(const Job& other) const {
+    bool operator==(const Job &other) const
+    {
         return id == other.id;
     }
 };
 
+struct Instance
+{
+    int N_size;
+    vector<int> processing_time;
+    vector<vector<int>> setup_time;
+    vector<vector<int>> delay_time;
+};
+
+Instance readDataFromFile(const string &filename);
 vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T);
 vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vector<Job> LC, vector<Job> sol, int N, vector<vector<int>> S, vector<vector<int>> D, vector<int> T);
 
-vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vector<Job> LC, vector<Job> sol, int N, vector<vector<int>> S, vector<vector<int>> D, vector<int> T) {
+Instance readDataFromFile(const string &filename)
+{
+    Instance instance;
+    ifstream inputFile(filename);
+
+    if (!inputFile.is_open())
+    {
+        cerr << "Erro: Nao pode abrir arquivo " << filename << endl;
+        return instance;
+    }
+
+    // le o numero de jobs N
+    string line;
+    if (getline(inputFile, line))
+    {
+        if (line.find("R=") == 0)
+        {
+            instance.N_size = stoi(line.substr(2));
+        }
+        else
+        {
+            cerr << "Erro: Nao encontrou parametro N." << endl;
+            inputFile.close();
+            return instance;
+        }
+    }
+
+    // confere se e um tamanho valido
+    if (instance.N_size <= 0)
+    {
+        cerr << "Erro: N precisa ser positivo " << instance.N_size << endl;
+        inputFile.close();
+        return instance;
+    }
+
+    const int N = instance.N_size;
+    instance.processing_time.resize(N);
+
+    // le tempos de
+    if (getline(inputFile, line))
+    {
+        if (line.find("Pi=(") == 0 && line.back() == ')')
+        {
+            // remove "Pi=(" e ")"
+            string values_str = line.substr(4, line.length() - 5); 
+            stringstream ss(values_str);
+            string token;
+            instance.processing_time.resize(N);
+            int idx = 0;
+
+            while (getline(ss, token, ','))
+            {
+                if (idx < N)
+                {
+                    instance.processing_time[idx++] = stoi(token);
+                }
+            }
+        }
+        else
+        {
+            cerr << "Error: Nao pode ler os tempos de processamento." << endl;
+            inputFile.close();
+            return instance;
+        }
+
+        // pula a linha "A="
+        if (!getline(inputFile, line) || line != "A=")
+        {
+            cerr << "Error: Expected 'A=' line." << endl;
+            inputFile.close();
+            return instance;
+        }
+
+        // processa matriz de delays
+        instance.delay_time.resize(N, vector<int>(N, -1));
+        while (getline(inputFile, line))
+        {
+            // para quando encontrar "Sij="
+            if (line == "Sij=")
+                break;
+            
+
+            // ignora linhas vazias
+            if (line.empty())
+                continue;
+
+            // linha de restrição: i,j,valor
+            stringstream ss(line);
+            string token;
+            vector<int> values;
+
+            while (getline(ss, token, ','))            
+                values.push_back(stoi(token));
+
+            if (values.size() == 3)
+            {
+                //TODO: ta zero based?
+                // -> não, então eu converti pra zero based aqui já que a aplicação toda está
+                int i = values[0] - 1; 
+                int j = values[1] - 1; 
+                int delay = values[2];
+
+                // RESTRIÇÃO É DE I PARA J -> JOB J DEPENDE DE JOB 1 TERMINAR ANTES E ESPERAR O DELAY
+                if (i >= 0 && i < N && j >= 0 && j < N)
+                    instance.delay_time[i][j] = delay;
+                else
+                    cerr << "Erro: Restricao invalida " << line << endl; 
+            }
+            else
+                cerr << "Erro: Formato invalido: " << line << endl;
+            
+        }
+
+        // processa matriz de setups
+        instance.setup_time.resize(N, vector<int>(N));
+        int row = 0;
+        while (getline(inputFile, line) && row < N)
+        {
+            // ignora linhas vazias
+            if (line.empty())
+                continue;
+
+            stringstream ss(line);
+            string token;
+            int col = 0;
+
+            while (getline(ss, token, ',') && col < N)
+            {
+                instance.setup_time[row][col] = stoi(token);
+                col++;
+            }
+
+            if (col != N)
+            {
+                cerr << "Error: Expected " << N << " values in setup matrix row " << row + 1 << ", but found " << col << endl;
+                inputFile.close();
+                return instance;
+            }
+
+            row++;
+        }
+
+        if (row != N)
+        {
+            cerr << "Error: Expected " << N << " rows in setup matrix, but found " << row << endl;
+            inputFile.close();
+            return instance;
+        }
+
+        inputFile.close();
+        return instance;
+    }
+}
+
+vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vector<Job> LC, vector<Job> sol, int N, vector<vector<int>> S, vector<vector<int>> D, vector<int> T)
+{
     // coloca na lista só os jobs possíveis de iniciar
-    // para todos os dependentes, verificar se os jobs que liberam ele foram concluídos 
-    for (auto it = allJobs.begin(); it != allJobs.end(); ++it) {
+    // para todos os dependentes, verificar se os jobs que liberam ele foram concluídos
+    for (auto it = allJobs.begin(); it != allJobs.end(); ++it)
+    {
 
         int id = it->first;
         Job job = it->second;
 
         // verifica se o job i já está na solução
-        if(find(sol.begin(), sol.end(), job) != sol.end())
+        if (find(sol.begin(), sol.end(), job) != sol.end())
             continue;
-        
-        // se aquele job ta sofrendo alguma restrição de delay de outro 
-        if(delays[id] > 0)
-            continue; 
+
+        // se aquele job ta sofrendo alguma restrição de delay de outro
+        if (delays[id] > 0)
+            continue;
 
         // se o job não tem dependencias e não está na LC
-        if(job.dependencies.empty() && find(LC.begin(), LC.end(), job) == LC.end()) {
+        if (job.dependencies.empty() && find(LC.begin(), LC.end(), job) == LC.end())
+        {
             LC.push_back(job);
             continue;
         }
 
         bool allDependenciesCompleted = true;
-        for(auto dep : job.dependencies)
+        for (auto dep : job.dependencies)
             // retorna se o job não foi encontrado na lista solução
             // compara com um job fas
-            if(find(sol.begin(), sol.end(), allJobs[dep]) == sol.end()) {
+            if (find(sol.begin(), sol.end(), allJobs[dep]) == sol.end())
+            {
                 allDependenciesCompleted = false;
                 break;
             }
-        
+
         // se tem dependencias atendidas mas ainda não está na lista
-        if(allDependenciesCompleted && find(LC.begin(), LC.end(), job) == LC.end())
+        if (allDependenciesCompleted && find(LC.begin(), LC.end(), job) == LC.end())
             LC.push_back(job);
     }
 
@@ -150,27 +236,28 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
     // peso do delay, quantidade de dependentes e setups
     int delayWeight = 1;
     int dependenciesWeight = 1;
-    int setupWeight = -2;
+    int setupWeight = 0;
 
-    vector<pair<int, int>> sorting; 
-    
-    for(auto job : LC) {
+    vector<pair<int, int>> sorting;
+
+    for (auto job : LC)
+    {
         int job_id = job.id;
         int maxDelay = 0;
-        int dependents = 0;
+        int dependents = job.dependents.size();
         int setup = 0;
 
-        // pontua quantos jobs aquele job libera (coluna) e o maior delay que ele oferece 
-        for(int j = 0; j < N; j++) {
-            if(D[j][job_id] != 0)
-                dependents++;
+        // pontua o maior delay que um job oferece
+        for (int j = 0; j < N; j++)
+        {
             maxDelay = max(maxDelay, D[j][job_id]);
         }
-        
-        // vejo em relação aos outros jobs o quanto economiza passando por ele
+
+        // TODO: corrigir essa relação
+        /* // vejo em relação aos outros jobs o quanto economiza passando por ele
         for(auto jobI : LC) {
             for(auto jobJ : LC) {
-                if(job_id == jobI.id || job_id == jobJ.id || jobI.id == jobJ.id) 
+                if(job_id == jobI.id || job_id == jobJ.id || jobI.id == jobJ.id)
                     continue;
                 int directCost = S[jobI.id][jobJ.id];
                 int viaJobCost = S[jobI.id][job_id] + S[job_id][jobJ.id];
@@ -179,7 +266,7 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
                 cout << "ATALHO DE I -> J PASSANDO PELO JOB " << job_id << " => " << viaJobCost << endl;
                 setup += (directCost - viaJobCost);
             }
-        }
+        } */
 
         // pontuação ajustável para experimentar o que impacta mais nas soluções
         cout << "\n\n__________SCORE JOB " << job_id << "__________" << endl;
@@ -191,23 +278,24 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
         sorting.push_back(make_pair(job_id, score));
     }
 
-    sort(sorting.begin(), sorting.end(), 
-         [](const pair<int, int>& a, const pair<int, int>& b) {
+    sort(sorting.begin(), sorting.end(),
+         [](const pair<int, int> &a, const pair<int, int> &b)
+         {
              return a.second > b.second;
          });
 
     vector<Job> sorted;
-    for(const auto& par : sorting) 
+    for (const auto &par : sorting)
         sorted.push_back(allJobs[par.first]);
     return sorted;
 }
 
+vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T)
+{
 
-vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T) {
-
-    // delay que um job i está submetido por um outro job qualquer    
+    // delay que um job i está submetido por um outro job qualquer
     vector<int> delays(N, 0);
- 
+
     int currentTime = 0;
     int stallTimes = 0;
     srand(static_cast<unsigned>(time(0)));
@@ -215,61 +303,76 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     vector<Job> LC;
     vector<Job> sol;
 
-    do {
-        
+    do
+    {
+
         LC = randomized_heuristic(allJobs, delays, LC, sol, N, S, D, T);
-        
+
         cout << "\n\n>>> LISTA ORDENADA: ";
-        for(auto job : LC) cout << "J" << job.id << " ";
-            cout << endl;
-        
-        // se a lista ta vazia e ainda possui jobs que não podem ser processados e ainda não acabou 
+        for (auto job : LC)
+            cout << "J" << job.id << " ";
+        cout << endl;
+
+        // se a lista ta vazia e ainda possui jobs que não podem ser processados e ainda não acabou
         int minTimeNeededToWait = INT_MAX;
         bool isNeededToWait = false;
-        if(LC.empty() and (N != sol.size() - stallTimes )) {
-            for(int i=0; i<N; i++) 
-                if(delays[i] != 0) {
+        if (LC.empty() and (N != sol.size() - stallTimes))
+        {
+            for (int i = 0; i < N; i++)
+                if (delays[i] != 0)
+                {
                     minTimeNeededToWait = min(delays[i], minTimeNeededToWait);
                     isNeededToWait = true;
                 }
             cout << ">>> PRECISA ESPERAR UM TEMPO DE " << minTimeNeededToWait << endl;
         }
-        
-        if (isNeededToWait) {
+
+        if (isNeededToWait)
+        {
             Job idleJob{-1, currentTime, currentTime + minTimeNeededToWait}; // job especial para tempo ocioso
             sol.push_back(idleJob);
             currentTime += minTimeNeededToWait;
             stallTimes++;
-            
-            for(int i = 0; i < N; i++) {
-                if(delays[i] > 0) {
+
+            for (int i = 0; i < N; i++)
+            {
+                if (delays[i] > 0)
+                {
                     delays[i] = max(0, delays[i] - minTimeNeededToWait);
                 }
             }
-            continue; 
+            continue;
         }
 
-        // 
-        int k = max(1, (int)(alpha * LC.size()));  
-        int random_index = rand() % k;  
+        //
+        int k = max(1, (int)(alpha * LC.size()));
+        int random_index = rand() % k;
         Job selectedJob = LC[random_index];
-        cout << "\n[ JOB SELECIONADO: " << selectedJob.id << " ] ( " << random_index << " )" << endl << endl;;
+        cout << "\n[ JOB SELECIONADO: " << selectedJob.id << " ] ( " << random_index << " )" << endl
+             << endl;
+        ;
         LC.erase(LC.begin() + random_index);
 
         int startTime = currentTime;
         int completionTime;
 
-        if(sol.empty()) {
-            completionTime = startTime + T[selectedJob.id]; 
-        } else {
+        if (sol.empty())
+        {
+            completionTime = startTime + T[selectedJob.id];
+        }
+        else
+        {
             Job lastJob = sol.back();
             // se o último job foi tempo ocioso, setup é o do anterior ao stall
-            // TODO: incluir setup dentro do tempo de delay 
+            // TODO: incluir setup dentro do tempo de delay
             int setup;
-            if(lastJob.id == -1) {
-                Job lastValidJob = sol[sol.size() -2];
-                setup = S[lastValidJob.id][selectedJob.id]  ;
-            } else setup = S[lastJob.id][selectedJob.id];
+            if (lastJob.id == -1)
+            {
+                Job lastValidJob = sol[sol.size() - 2];
+                setup = S[lastValidJob.id][selectedJob.id];
+            }
+            else
+                setup = S[lastJob.id][selectedJob.id];
             completionTime = startTime + setup + T[selectedJob.id];
         }
 
@@ -279,23 +382,26 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
         sol.push_back(selectedJob);
 
         // atualizo a passagem do tempo
-        currentTime = completionTime; 
+        currentTime = completionTime;
         int duration = completionTime - startTime;
 
         // atalizo os delays
-        for(int i=0; i<N; i++) {
+        for (int i = 0; i < N; i++)
+        {
             delays[i] = max(0, (delays[i] - duration));
         }
 
-        for (int j=0; j<N; j++) {
-            // se existe uma restrição maior daquele job para um outro aplico 
-            if(D[j][selectedJob.id] != 0) {
+        for (int j = 0; j < N; j++)
+        {
+            // se existe uma restrição maior daquele job para um outro aplico
+            if (D[j][selectedJob.id] != 0)
+            {
                 delays[j] = max(delays[j], D[j][selectedJob.id]);
             }
         }
 
         cout << ">>> RESTRICOES DE DELAY ATUAIS: " << endl;
-        for(int i=0; i<N; i++) 
+        for (int i = 0; i < N; i++)
             cout << "J" << i << " " << delays[i] << " | ";
         cout << endl;
 
@@ -304,7 +410,6 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     return sol;
 }
 
-
 /*int main() {
 
     // le as informações do job
@@ -312,18 +417,18 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     vector<int> T = {2, 5, 2, 1, 1};
 
     vector<vector<int>> S = {
-        {0, 4, 5, 3, 5}, 
-        {2, 0, 4, 3, 2}, 
-        {5, 5, 0, 2, 2}, 
+        {0, 4, 5, 3, 5},
+        {2, 0, 4, 3, 2},
+        {5, 5, 0, 2, 2},
         {1, 3, 2, 0, 5},
         {4, 3, 1, 1, 0}
     };
 
     vector<vector<int>> D(N, vector<int>(N, 0));
-    D[3][0] = 3; 
-    D[3][2] = 8; 
-    D[4][2] = 4; 
-    
+    D[3][0] = 3;
+    D[3][2] = 8;
+    D[4][2] = 4;
+
     // inicia todas as informações do job
     map<int, Job> allJobs;
 
@@ -341,7 +446,7 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
         allJobs[i] = job;
     }
 
-    // makespan 
+    // makespan
     float alpha = 0.5;
     vector<Job> sol = randomized_greedy(N, alpha, allJobs, S, D, T);
 
@@ -357,27 +462,31 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     return 0;
 }*/
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     string filename = argv[1];
-    
-    Grafo result = readDataFromFile(filename);
 
-    if (result.N_size > 0) {
+    Instance result = readDataFromFile(filename);
+
+    if (result.N_size > 0)
+    {
         const int N = result.N_size;
-        
+
         cout << "Numero Jobs N: " << N << endl;
 
         cout << "Processing Time (" << N << " total): ";
-        for (size_t i = 0; i < result.processing_time.size(); ++i) {
+        for (size_t i = 0; i < result.processing_time.size(); ++i)
+        {
             cout << result.processing_time[i] << (i == result.processing_time.size() - 1 ? "" : ", ");
         }
         cout << endl;
 
         // Print Matrix 1
         cout << "\nMatriz Setup (" << N << "x" << N << "):" << endl;
-        for (const auto& row : result.setup_time) {
-            for (size_t i = 0; i < row.size(); ++i) {
+        for (const auto &row : result.setup_time)
+        {
+            for (size_t i = 0; i < row.size(); ++i)
+            {
                 cout << row[i] << (i == row.size() - 1 ? "" : "\t"); // Using tab for alignment
             }
             cout << endl;
@@ -385,13 +494,70 @@ int main(int argc, char* argv[])
 
         // Print Matrix 2
         cout << "\nMatriz Delay (" << N << "x" << N << "):" << endl;
-        for (const auto& row : result.delay_time) {
-            for (size_t i = 0; i < row.size(); ++i) {
+        for (const auto &row : result.delay_time)
+        {
+            for (size_t i = 0; i < row.size(); ++i)
+            {
                 cout << row[i] << (i == row.size() - 1 ? "" : "\t");
             }
             cout << endl;
         }
-    } else {
+
+        int noDependentConstraintValue = -1;
+
+        // inicia todas as informações dos jobs
+        map<int, Job> allJobs;
+        for (int i = 0; i < N; i++)
+        {
+            Job job;
+            job.id = i;
+            job.start = 0;
+            job.end = 0;
+            for (int j = 0; j < N; j++)
+            {
+
+                // DEPENDENCIA: DE QUEM O JOB I DEPENDE ( J -> I, JOB I DEPENDE DO J)
+                if (result.delay_time[j][i] > noDependentConstraintValue)
+                    job.dependencies.push_back(j);
+
+                // DEPENDENTES: QUEM O JOB I LIBERA ( I -> J, JOB J É DEPENDENTE DE I)
+                if (result.delay_time[i][j] > noDependentConstraintValue)
+                    job.dependents.push_back(j);
+            }
+            allJobs[i] = job;
+        }
+
+        for (auto it = allJobs.begin(); it != allJobs.end(); ++it)
+        {
+            int id = it->first;
+            Job job = it->second;
+            cout << "Job " << id << " -> " << job.dependencies.size() << " - " << job.dependents.size() << endl;
+        }
+
+        vector<float> alphas = {0.2, 0.5, 0.8};
+        for(auto alpha : alphas) {
+
+            // makespan
+            vector<Job> sol = randomized_greedy(N, alpha, allJobs, result.setup_time, result.delay_time, result.processing_time);
+    
+            cout << "\n\nSOLUCAO FINAL:" << endl;
+            for (Job job : sol)
+            {
+                if (job.id == -1)
+                {
+                    cout << "IDLE: " << job.start << " - " << job.end << endl;
+                }
+                else
+                {
+                    cout << "J" << job.id+1 << ": " << job.start << " - " << job.end << endl;
+                }
+            }
+            system("pause");
+        }
+
+    }
+    else
+    {
         cout << "File could not be parsed successfully (N was 0 or file could not be opened)." << endl;
     }
 
