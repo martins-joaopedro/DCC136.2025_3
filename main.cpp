@@ -602,7 +602,7 @@ vector<Job> local_search(int N, vector<Job> initialSolution, map<int, Job> allJo
     int iterations = 0;
     const int MAX_ITERATIONS = 100;
     
-    cout << "Initial makespan: " << bestMakespan << endl;
+    cout << "Makespan Inicial: " << bestMakespan << endl;
     
     while (improved && iterations < MAX_ITERATIONS) {
         improved = false;
@@ -622,9 +622,9 @@ vector<Job> local_search(int N, vector<Job> initialSolution, map<int, Job> allJo
                 int newMakespan = calculate_makespan(newSchedule);
                 
                 if (newMakespan < bestMakespan) {
-                    cout << "Improvement found! Old makespan: " << bestMakespan 
-                         << ", New makespan: " << newMakespan 
-                         << " (swap positions " << i << " and " << i + 1 << ")" << endl;
+                    cout << "Melhora encontrada! Makespan anterior: " << bestMakespan 
+                         << ", makespan novo: " << newMakespan 
+                         << " (troca posições " << i << " e " << i + 1 << ")" << endl;
                     
                     bestSol = newSchedule;
                     bestMakespan = newMakespan;
@@ -659,9 +659,9 @@ vector<Job> local_search(int N, vector<Job> initialSolution, map<int, Job> allJo
                         int newMakespan = calculate_makespan(newSchedule);
                         
                         if (newMakespan < bestMakespan) {
-                            cout << "Improvement found with insertion! Old makespan: " << bestMakespan 
-                                 << ", New makespan: " << newMakespan 
-                                 << " (move job from " << i << " to " << j << ")" << endl;
+                            cout << "Melhora encontrada! Makespan anterior: " << bestMakespan 
+                                 << ", makespan novo: " << newMakespan 
+                                 << " (move job de " << i << " para " << j << ")" << endl;
                             
                             bestSol = newSchedule;
                             bestMakespan = newMakespan;
@@ -772,29 +772,29 @@ int main(int argc, char *argv[]) {
             }
 
             // Validate the solution
-            cout << "\nValidating solution..." << endl;
+            cout << "\nValidando Solucao..." << endl;
             if (validate_solution(sol, allJobs, result.delay_time, result.processing_time, result.setup_time)) {
-                cout << "Solution is VALID" << endl;
+                cout << "Solução é valida" << endl;
             } else {
-                cout << "Solution is INVALID" << endl;
+                cout << "Solução é invalida" << endl;
             }
 
             int initialMakespan = calculate_makespan(sol);
-            cout << "Initial makespan: " << initialMakespan << endl;
+            cout << "Makespan inicial: " << initialMakespan << endl;
 
             // Apply local search
-            cout << "\nApplying local search..." << endl;
+            cout << "\nAplicando busca local..." << endl;
             vector<Job> improvedSol = local_search(N, sol, allJobs, result.setup_time, result.delay_time, result.processing_time);
             
-            cout << "\nIMPROVED SOLUTION:" << endl;
+            cout << "\nSolução melhorada:" << endl;
             for (Job job : improvedSol)
             {
                 cout << "J" << job.id+1 << ": " << job.start << " - " << job.end << endl;
             }
 
             int finalMakespan = calculate_makespan(improvedSol);
-            cout << "Final makespan: " << finalMakespan << endl;
-            cout << "Improvement: " << (initialMakespan - finalMakespan) << " units" << endl;
+            cout << "Makespan final: " << finalMakespan << endl;
+            cout << "Melhora: " << (initialMakespan - finalMakespan) << " unidades" << endl;
 
             system("pause");
         }
