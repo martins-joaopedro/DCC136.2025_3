@@ -42,6 +42,10 @@ struct Instance
 Instance readDataFromFile(const string &filename);
 vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T);
 vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vector<Job> LC, vector<Job> sol, int N, vector<vector<int>> S, vector<vector<int>> D, vector<int> T);
+vector<Job> local_search(int N, vector<Job> initialSolution, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T);
+bool validate_solution(vector<Job> sol, map<int, Job> allJobs, vector<vector<int>> D, vector<int> T, vector<vector<int>> S);
+int calculate_makespan(vector<Job> sol);
+vector<Job> recalculate_schedule(vector<Job> jobSequence, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T);
 
 Instance readDataFromFile(const string &filename)
 {
@@ -432,6 +436,252 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     return sol;
 }
 
+bool validate_solution(vector<Job> sol, map<int, Job> allJobs, vector<vector<int>> D, vector<int> T, vector<vector<int>> S) {
+    // cria cópia da lista de jobs
+    vector<Job> actualJobs;
+    for (auto job : sol) {
+        if (job.id != -1) {
+            actualJobs.push_back(job);
+        }
+    }
+    
+    int N = actualJobs.size();
+    
+    // Confere precedências
+    for (int i = 0; i < N; i++) {
+        Job currentJob = actualJobs[i];
+        
+        // Checa tds as dependencias
+        for (int dep : currentJob.dependencies) {
+            // Seleciona a dependencia do job atual
+            bool found = false;
+            int depEndTime = 0;
+            
+            for (int j = 0; j < i; j++) {
+                if (actualJobs[j].id == dep) {
+                    found = true;
+                    depEndTime = actualJobs[j].end;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                // cerr << "Error: Job " << currentJob.id << " depends on job " << dep << " but dependency is not scheduled before" << endl;
+                cout << "ERRO! Job " << currentJob.id << " depende do job " << dep << " mas a dependencia nao foi atendida" << endl;
+                cout << "Solução descartada!" << endl;
+                return false;
+            }
+            
+            // Confere se delay foi satisfeito
+            int requiredDelay = D[dep][currentJob.id];
+            if (requiredDelay > 0) {
+                int actualGap = currentJob.start - depEndTime;
+                if (actualGap < requiredDelay) {
+
+                    // cerr << "Error: Delay constraint violated. Job " << currentJob.id 
+                    //      << " should start at least " << requiredDelay 
+                    //      << " after job " << dep << " ends, but gap is " << actualGap << endl;
+                    
+                    cout << "Erro no delay! Job " << currentJob.id 
+                         << " deveria iniciar a partir de " << requiredDelay 
+                         << " apos o termino do job " << dep << ", mas o gap e de " << actualGap << endl;
+                    cout << "Solução descartada!" << endl;
+                    return false;
+                }
+            }
+        }
+    }
+    
+    // Confere processamento e setup
+    for (int i = 0; i < N; i++) {
+        Job currentJob = actualJobs[i];
+        
+        // Confere processamento
+        int expectedDuration = T[currentJob.id];
+        int actualDuration = currentJob.end - currentJob.start;
+        
+        if (actualDuration != expectedDuration) {
+            // Confere se setup incluido
+            if (i > 0) {
+                Job previousJob = actualJobs[i-1];
+                int setupTime = S[previousJob.id][currentJob.id];
+                if (actualDuration != expectedDuration + setupTime) {
+                    // cerr << "Error: Job " << currentJob.id << " has incorrect duration. Expected: " 
+                    //      << expectedDuration << " + setup, Actual: " << actualDuration << endl;
+                    cout << "Erro no tempo de processamento! Job " << currentJob.id 
+                         << " deveria ter duracao de " << expectedDuration 
+                         << " + setup, mas o tempo real foi de " << actualDuration << endl;
+                    cout << "Solução descartada!" << endl;
+                    return false;
+                }
+            } else {
+                if (actualDuration != expectedDuration) {
+                    // cerr << "Error: Job " << currentJob.id << " has incorrect duration. Expected: " 
+                    //      << expectedDuration << ", Actual: " << actualDuration << endl;
+                    cout << "Erro no tempo de processamento! Job " << currentJob.id 
+                         << " deveria ter duracao de " << expectedDuration 
+                         << ", mas o tempo real foi de " << actualDuration << endl;
+                    cout << "Solução descartada!" << endl;
+                    return false;
+                }
+            }
+        }
+        
+        // Check for overlaps ???
+        if (i > 0) {
+            Job previousJob = actualJobs[i-1];
+            if (previousJob.end > currentJob.start) {
+                // cerr << "Error: Jobs " << previousJob.id << " and " << currentJob.id << " overlap" << endl;
+                return false;
+            }
+        }
+    }
+    
+    return true;
+}
+
+int calculate_makespan(vector<Job> sol) {
+    if (sol.empty()) return 0;
+    
+    int makespan = 0;
+    for (auto job : sol) {
+        makespan = max(makespan, job.end);
+    }
+    return makespan;
+}
+
+vector<Job> recalculate_schedule(vector<Job> jobSequence, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T) {
+    vector<Job> newSchedule;
+    int currentTime = 0;
+    
+    for (int i = 0; i < jobSequence.size(); i++) {
+        Job currentJob = jobSequence[i];
+        currentJob.start = currentTime;
+        
+        // Adiciona setup se n for o 1° job
+        if (i > 0) {
+            Job previousJob = newSchedule.back();
+            currentJob.start += S[previousJob.id][currentJob.id];
+        }
+        
+        // Confere delay
+        for (int dep : currentJob.dependencies) {
+            // Encontra qd a dependencia acaba
+            for (const Job& scheduledJob : newSchedule) {
+                if (scheduledJob.id == dep) {
+                    int requiredStartTime = scheduledJob.end + D[dep][currentJob.id];
+                    if (currentJob.start < requiredStartTime) {
+                        // adiciona tempo ocioso se necessario
+                        currentJob.start = requiredStartTime;
+                    }
+                    break;
+                }
+            }
+        }
+        
+        currentJob.end = currentJob.start + T[currentJob.id];
+        newSchedule.push_back(currentJob);
+        currentTime = currentJob.end;
+    }
+    
+    return newSchedule;
+}
+
+vector<Job> local_search(int N, vector<Job> initialSolution, map<int, Job> allJobs, vector<vector<int>> S, vector<vector<int>> D, vector<int> T) {
+    // Remove idle jobs for local search operations
+    vector<Job> actualJobs;
+    for (auto job : initialSolution) {
+        if (job.id != -1) {
+            actualJobs.push_back(job);
+        }
+    }
+    
+    vector<Job> bestSol = recalculate_schedule(actualJobs, allJobs, S, D, T);
+    int bestMakespan = calculate_makespan(bestSol);
+    bool improved = true;
+    int iterations = 0;
+    const int MAX_ITERATIONS = 100;
+    
+    cout << "Initial makespan: " << bestMakespan << endl;
+    
+    while (improved && iterations < MAX_ITERATIONS) {
+        improved = false;
+        
+        // Tenta combinações entre tds os jobs
+        for (int i = 0; i < actualJobs.size() - 1; i++) {
+            vector<Job> candidate = actualJobs;
+            
+            // Troca jobs adjacentes
+            swap(candidate[i], candidate[i + 1]);
+            
+            // Atualiza os tempos
+            vector<Job> newSchedule = recalculate_schedule(candidate, allJobs, S, D, T);
+            
+            // Valida e confere makespan
+            if (validate_solution(newSchedule, allJobs, D, T, S)) {
+                int newMakespan = calculate_makespan(newSchedule);
+                
+                if (newMakespan < bestMakespan) {
+                    cout << "Improvement found! Old makespan: " << bestMakespan 
+                         << ", New makespan: " << newMakespan 
+                         << " (swap positions " << i << " and " << i + 1 << ")" << endl;
+                    
+                    bestSol = newSchedule;
+                    bestMakespan = newMakespan;
+                    actualJobs = candidate;
+                    improved = true;
+                    break; // Recomeça a busca com nova solucao
+                }
+            }
+        }
+        
+        // Se não melhorar com troca, tenta inserção
+        if (!improved) {
+            for (int i = 0; i < actualJobs.size(); i++) {
+                for (int j = 0; j < actualJobs.size(); j++) {
+                    if (i == j) continue;
+                    
+                    vector<Job> candidate = actualJobs;
+                    Job jobToMove = candidate[i];
+                    candidate.erase(candidate.begin() + i);
+                    
+                    if (j > i) {
+                        candidate.insert(candidate.begin() + (j - 1), jobToMove);
+                    } else {
+                        candidate.insert(candidate.begin() + j, jobToMove);
+                    }
+                    
+                    // Recalculate the entire schedule
+                    vector<Job> newSchedule = recalculate_schedule(candidate, allJobs, S, D, T);
+                    
+                    // Validate and check makespan
+                    if (validate_solution(newSchedule, allJobs, D, T, S)) {
+                        int newMakespan = calculate_makespan(newSchedule);
+                        
+                        if (newMakespan < bestMakespan) {
+                            cout << "Improvement found with insertion! Old makespan: " << bestMakespan 
+                                 << ", New makespan: " << newMakespan 
+                                 << " (move job from " << i << " to " << j << ")" << endl;
+                            
+                            bestSol = newSchedule;
+                            bestMakespan = newMakespan;
+                            actualJobs = candidate;
+                            improved = true;
+                            break;
+                        }
+                    }
+                }
+                if (improved) break;
+            }
+        }
+        
+        iterations++;
+    }
+    
+    cout << "Terminou Busca Local. Melhor makespan: " << bestMakespan << endl;
+    return bestSol;
+}
+
 int main(int argc, char *argv[]) {
     string filename = argv[1];
 
@@ -520,6 +770,32 @@ int main(int argc, char *argv[]) {
                     cout << "J" << job.id+1 << ": " << job.start << " - " << job.end << endl;
                 }
             }
+
+            // Validate the solution
+            cout << "\nValidating solution..." << endl;
+            if (validate_solution(sol, allJobs, result.delay_time, result.processing_time, result.setup_time)) {
+                cout << "Solution is VALID" << endl;
+            } else {
+                cout << "Solution is INVALID" << endl;
+            }
+
+            int initialMakespan = calculate_makespan(sol);
+            cout << "Initial makespan: " << initialMakespan << endl;
+
+            // Apply local search
+            cout << "\nApplying local search..." << endl;
+            vector<Job> improvedSol = local_search(N, sol, allJobs, result.setup_time, result.delay_time, result.processing_time);
+            
+            cout << "\nIMPROVED SOLUTION:" << endl;
+            for (Job job : improvedSol)
+            {
+                cout << "J" << job.id+1 << ": " << job.start << " - " << job.end << endl;
+            }
+
+            int finalMakespan = calculate_makespan(improvedSol);
+            cout << "Final makespan: " << finalMakespan << endl;
+            cout << "Improvement: " << (initialMakespan - finalMakespan) << " units" << endl;
+
             system("pause");
         }
 
