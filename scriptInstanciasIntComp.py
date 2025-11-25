@@ -2,19 +2,20 @@ import numpy as np
 import random
 import os
 
-def matriz_delays(d_matriz, n, d_intervalo, n_rest_prec, k):
+def matriz_delays(d_matriz, n, d_intervalo, n_rest_prec, k, d0):
 
     while(k < n_rest_prec):
         i = random.randint(0, n-1)
         j = random.randint(0, n-1)
-        if(i != j and d_matriz[i][j] == 0 and d_matriz[j][i] == 0):
-            d_matriz[i][j] = random.randint(d_intervalo[0], d_intervalo[1])
-            d_matriz[j][i] = 0
+        if(i != j and d_matriz[i][j] == -1 and d_matriz[j][i] == -1):
+            d = random.randint(d_intervalo[0], d_intervalo[1])
+            if(d != 0): d += d0
+            d_matriz[i][j] = d
             k+=1
 
     return d_matriz
 
-def gerar_instancia_grafo(n, p_intervalo, s_intervalo, d_intervalo, n_rest_prec, seed=None):
+def gerar_instancia_grafo(n, p_intervalo, s_intervalo, d_intervalo, n_rest_prec, d0):
 
     # n: número de jobs
     # p_intervalo: tupla (a, b) - intervalo do tempo de processamento
@@ -28,9 +29,9 @@ def gerar_instancia_grafo(n, p_intervalo, s_intervalo, d_intervalo, n_rest_prec,
         exit()
 
 
-    if seed is not None:
-        random.seed(seed)
-        np.random.seed(seed)
+    # if seed is not None:
+    #     random.seed(seed)
+    #     np.random.seed(seed)
     
     # Gerar tempos de processamento individuais para cada job
     p = [random.randint(p_intervalo[0], p_intervalo[1]) for _ in range(n)]
@@ -42,7 +43,7 @@ def gerar_instancia_grafo(n, p_intervalo, s_intervalo, d_intervalo, n_rest_prec,
             if i != j:
                 s_matriz[i][j] = random.randint(s_intervalo[0], s_intervalo[1])
     
-    d_matriz = matriz_delays(np.zeros((n, n)), n, d_intervalo, n_rest_prec, 0)
+    d_matriz = matriz_delays(np.full((n, n),-1), n, d_intervalo, n_rest_prec, 0, d0)
         
     return {
         'n': n,
@@ -136,22 +137,23 @@ def imprimir_instancia(instancia):
 if __name__ == "__main__":
 
     # parametros
-    n_jobs = 20
-    n_restricoes_precedencia = 15
-    p_range = (10, 20)    
-    s_range = (5, 10)      
-    d_range = (20, 40)      
+    n_jobs = 5
+    n_restricoes_precedencia = 3
+    p_range = (1, 5)    
+    s_range = (1, 5)      
+    d_range = (0, 11)      
+    d0 = 9
     
     # Gerar instância
-    instancia = gerar_instancia_grafo(n_jobs, p_range, s_range, d_range, n_restricoes_precedencia)#, seed=42)
+    instancia = gerar_instancia_grafo(n_jobs, p_range, s_range, d_range, n_restricoes_precedencia,d0)#, seed=42)
     
     # Mostrar resultados
     imprimir_instancia(instancia)
     
-    nome_instancia = "instancia5_grupo1.txt"
+    nome_instancia = "instancias/instancia_teste5.txt"
 
     # Salvar em arquivo
-    #salvar_instancia(instancia, nome_instancia)
+    salvar_instancia(instancia, nome_instancia)
     #print(f"\nInstância salva em '{nome_instancia}'")
 
     print()

@@ -1,7 +1,5 @@
-using namespace std;
+/* using namespace std;
 
-
-/* RANDOMIZADO ADAPTATIVO */
 vector<char> Gulosos::randomized_heuristic(vector<char> LC, map<char, No *> &mapa_nos, int k, ofstream &file)
 {
 
@@ -218,3 +216,4 @@ bool Gulosos::check_validity(vector<char> S, Grafo *grafo, ofstream &file)
         file << "===> Solucao INVALIDA\n";
     return false;
 }
+ */
