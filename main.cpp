@@ -466,7 +466,6 @@ bool validate_solution(vector<Job> sol, map<int, Job> allJobs, vector<vector<int
             }
             
             if (!found) {
-                // cerr << "Error: Job " << currentJob.id << " depends on job " << dep << " but dependency is not scheduled before" << endl;
                 cout << "ERRO! Job " << currentJob.id << " depende do job " << dep << " mas a dependencia nao foi atendida" << endl;
                 cout << "Solução descartada!" << endl;
                 return false;
@@ -476,15 +475,10 @@ bool validate_solution(vector<Job> sol, map<int, Job> allJobs, vector<vector<int
             int requiredDelay = D[dep][currentJob.id];
             if (requiredDelay > 0) {
                 int actualGap = currentJob.start - depEndTime;
-                if (actualGap < requiredDelay) {
-
-                    // cerr << "Error: Delay constraint violated. Job " << currentJob.id 
-                    //      << " should start at least " << requiredDelay 
-                    //      << " after job " << dep << " ends, but gap is " << actualGap << endl;
-                    
+                if (actualGap < requiredDelay) {                
                     cout << "Erro no delay! Job " << currentJob.id 
                          << " deveria iniciar a partir de " << requiredDelay 
-                         << " apos o termino do job " << dep << ", mas o gap e de " << actualGap << endl;
+                         << " instantes apos o termino do job " << dep << ", mas o gap e de " << actualGap << endl;
                     cout << "Solução descartada!" << endl;
                     return false;
                 }
@@ -506,8 +500,6 @@ bool validate_solution(vector<Job> sol, map<int, Job> allJobs, vector<vector<int
                 Job previousJob = actualJobs[i-1];
                 int setupTime = S[previousJob.id][currentJob.id];
                 if (actualDuration != expectedDuration + setupTime) {
-                    // cerr << "Error: Job " << currentJob.id << " has incorrect duration. Expected: " 
-                    //      << expectedDuration << " + setup, Actual: " << actualDuration << endl;
                     cout << "Erro no tempo de processamento! Job " << currentJob.id 
                          << " deveria ter duracao de " << expectedDuration 
                          << " + setup, mas o tempo real foi de " << actualDuration << endl;
@@ -516,8 +508,6 @@ bool validate_solution(vector<Job> sol, map<int, Job> allJobs, vector<vector<int
                 }
             } else {
                 if (actualDuration != expectedDuration) {
-                    // cerr << "Error: Job " << currentJob.id << " has incorrect duration. Expected: " 
-                    //      << expectedDuration << ", Actual: " << actualDuration << endl;
                     cout << "Erro no tempo de processamento! Job " << currentJob.id 
                          << " deveria ter duracao de " << expectedDuration 
                          << ", mas o tempo real foi de " << actualDuration << endl;
@@ -682,6 +672,27 @@ vector<Job> local_search(int N, vector<Job> initialSolution, map<int, Job> allJo
     return bestSol;
 }
 
+void calculaSetupETempoOcioso(vector<Job> sol, vector<vector<int>> S, vector<vector<int>> D) {
+    int totalSetup = 0;
+    int totalOcioso = 0;
+
+    for (int i = 1; i < sol.size(); i++) {
+        Job prevJob = sol[i - 1];
+        Job currJob = sol[i];
+
+        if (prevJob.id != -1 && currJob.id != -1) {
+            totalSetup += S[prevJob.id][currJob.id];
+            if (currJob.start > prevJob.end && S[prevJob.id][currJob.id] < (currJob.start - prevJob.end)) {
+                totalOcioso += (currJob.start - prevJob.end) - S[prevJob.id][currJob.id];
+            }
+            
+        }
+    }
+
+    cout << "Total Setup Pago: " << totalSetup << endl;
+    cout << "Tempo Ocioso Pago: " << totalOcioso << endl;
+}
+
 int main(int argc, char *argv[]) {
     string filename = argv[1];
 
@@ -795,6 +806,8 @@ int main(int argc, char *argv[]) {
             int finalMakespan = calculate_makespan(improvedSol);
             cout << "Makespan final: " << finalMakespan << endl;
             cout << "Melhora: " << (initialMakespan - finalMakespan) << " unidades" << endl;
+
+            calculaSetupETempoOcioso(improvedSol, result.setup_time, result.delay_time);
 
             system("pause");
         }
