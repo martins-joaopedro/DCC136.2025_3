@@ -10,6 +10,8 @@
 #include <vector>
 #include <stdexcept>
 #include <bits/stdc++.h>
+#define noDependentConstraintValue -1
+
 using namespace std;
 
 struct Job
@@ -263,8 +265,15 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
 
         // setup em relação ao job anterior
         if (!sol.empty()) {
-            int lastJobId = sol.back().id;
-            setupFromPrevious = S[lastJobId][job_id];
+            // encontra o último job válido
+            int lastValidIndex = sol.size() - 1;
+            while (lastValidIndex >= 0 && sol[lastValidIndex].id == -1)
+                lastValidIndex--;
+
+            if (lastValidIndex >= 0) {
+                int lastValidId = sol[lastValidIndex].id;
+                setupFromPrevious = S[lastValidId][job_id];
+            }
         }
 
         // calculo potencial economia
@@ -306,13 +315,21 @@ vector<Job> randomized_heuristic(map<int, Job> allJobs, vector<int> delays, vect
         sorted.push_back(allJobs[par.first]);
     
     // melhor heurística que so funciona a partir do primeiro candidato na sol
-    // procura menor setup em relação ao anterior 🤡🤡🤡🤡🤡
     if (!sol.empty()) {
-        Job lastJob = sol.back();
-        sort(sorted.begin(), sorted.end(), 
-            [&](const Job& a, const Job& b) {
-                return S[lastJob.id][a.id] < S[lastJob.id][b.id];
-            });
+
+        // encontrar o último job válido
+        int lastValidIndex = sol.size() - 1;
+        while (lastValidIndex >= 0 && sol[lastValidIndex].id == -1)
+            lastValidIndex--;
+
+        if (lastValidIndex >= 0) {
+            int lastValidId = sol[lastValidIndex].id;
+
+            sort(sorted.begin(), sorted.end(),
+                [&](const Job& a, const Job& b) {
+                    return S[lastValidId][a.id] < S[lastValidId][b.id];
+                });
+        }
     }
 
     return sorted;
@@ -331,74 +348,83 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
     vector<Job> LC;
     vector<Job> sol;
 
+    int realJobs = 0;
+    int lastStall = 0;
+
     do {
         LC = randomized_heuristic(allJobs, delays, LC, sol, N, S, D, T);
 
         cout << "\n\n>>> LISTA ORDENADA: ";
         for (auto job : LC)
-            cout << "J" << job.id << " ";
+            cout << "J" << job.id+1 << " ";
         cout << endl;
 
         // se a lista ta vazia e ainda possui jobs que não podem ser processados e ainda não acabou
-        int minTimeNeededToWait = INT_MAX;
         bool isNeededToWait = false;
-        if (LC.empty() and (N != sol.size() - stallTimes))
-        {
+        int minTimeNeededToWait = INT_MAX;
+        
+        if (LC.empty() && realJobs < N) {
             for (int i = 0; i < N; i++)
-                if (delays[i] != 0)
-                {
+                if (delays[i] > 0) {
                     minTimeNeededToWait = min(delays[i], minTimeNeededToWait);
                     isNeededToWait = true;
-                }
-            cout << ">>> PRECISA ESPERAR UM TEMPO DE " << minTimeNeededToWait << endl;
+                }   
         }
 
-        if (isNeededToWait)
-        {
-            Job idleJob{-1, currentTime, currentTime + minTimeNeededToWait}; // job especial para tempo ocioso
+        if (isNeededToWait) {
+
+            lastStall = minTimeNeededToWait; 
+
+            Job idleJob{-1, currentTime, currentTime + minTimeNeededToWait};
             sol.push_back(idleJob);
             currentTime += minTimeNeededToWait;
-            stallTimes++;
 
+            // atualizo todos os tempos de delay
             for (int i = 0; i < N; i++)
-            {
                 if (delays[i] > 0)
-                {
                     delays[i] = max(0, delays[i] - minTimeNeededToWait);
-                }
-            }
+
             continue;
         }
 
-        //
         int k = max(1, (int)(alpha * LC.size()));
         int random_index = rand() % k;
         Job selectedJob = LC[random_index];
-        cout << "\n[ JOB SELECIONADO: " << selectedJob.id << " ] ( " << random_index << " )" << endl
-             << endl;
-        ;
+        cout << "\n[ JOB SELECIONADO: " << selectedJob.id+1 << " ] ( " << random_index << " )" << endl << endl;
         LC.erase(LC.begin() + random_index);
-
+    
         int startTime = currentTime;
         int completionTime;
 
-        if (sol.empty())
-        {
+        int setup = 0;
+
+        if (sol.empty()) {
+            // primeiro job → sem setup
             completionTime = startTime + T[selectedJob.id];
-        }
-        else
-        {
-            Job lastJob = sol.back();
-            // se o último job foi tempo ocioso, setup é o do anterior ao stall
-            // TODO: incluir setup dentro do tempo de delay
-            int setup;
-            if (lastJob.id == -1)
-            {
-                Job lastValidJob = sol[sol.size() - 2];
-                setup = S[lastValidJob.id][selectedJob.id];
+        } else {
+            // encontrar o último job válido (id != -1)
+            int lastValidIndex = sol.size() - 1;
+            while (lastValidIndex >= 0 && sol[lastValidIndex].id == -1)
+                lastValidIndex--;
+
+            if (lastValidIndex >= 0) {
+                int lastValidId = sol[lastValidIndex].id;
+                int rawSetup = S[lastValidId][selectedJob.id];
+
+                // stall pode absorver parte ou todo o setup
+                if (rawSetup <= lastStall)
+                    setup = 0;
+                else
+                    setup = rawSetup - lastStall;
+
+                lastStall = 0;  // reset após uso
             }
-            else
-                setup = S[lastJob.id][selectedJob.id];
+            else {
+                // ocorreu apenas stalls e nenhum job real ainda
+                setup = 0;
+            }
+
+            cout << ">>>>>> PAGOU SETUP: " << setup << endl;
             completionTime = startTime + setup + T[selectedJob.id];
         }
 
@@ -406,6 +432,7 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
         selectedJob.start = startTime;
         selectedJob.end = completionTime;
         sol.push_back(selectedJob);
+        realJobs++;
 
         // atualizo a passagem do tempo
         currentTime = completionTime;
@@ -413,25 +440,23 @@ vector<Job> randomized_greedy(int N, float alpha, map<int, Job> allJobs, vector<
 
         // atalizo os delays
         for (int i = 0; i < N; i++)
-        {
             delays[i] = max(0, (delays[i] - duration));
-        }
 
-        for (int j = 0; j < N; j++)
-        {
-            // se existe uma restrição maior daquele job para um outro aplico
-            if (D[j][selectedJob.id] != 0)
-            {
-                delays[j] = max(delays[j], D[j][selectedJob.id]);
-            }
+        // aplicar a maior restrição de delay nos dependentes (quem eu libero ao concluir o job atual) 
+        // no momento em que faço aquele job I
+        for(auto dependent : selectedJob.dependents) {
+            // para todos os jobs J dependentes de I (i -> j tem restrição), aplico a maior
+            delays[dependent] = max(delays[dependent], D[selectedJob.id][dependent]);
         }
 
         cout << ">>> RESTRICOES DE DELAY ATUAIS: " << endl;
         for (int i = 0; i < N; i++)
-            cout << "J" << i << " " << delays[i] << " | ";
+            // so exibo as restrições dos jobs que não estão na solução
+            if(find(sol.begin(), sol.end(), Job{i, 0, 0}) == sol.end())
+                cout << "J" << i+1 << " " << delays[i] << " | ";
         cout << endl;
 
-    } while (N != (sol.size() - stallTimes));
+    } while (realJobs < N);
 
     return sol;
 }
@@ -733,8 +758,6 @@ int main(int argc, char *argv[]) {
             cout << endl;
         }
 
-        int noDependentConstraintValue = -1;
-
         // inicia todas as informações dos jobs
         map<int, Job> allJobs;
         for (int i = 0; i < N; i++)
@@ -745,10 +768,12 @@ int main(int argc, char *argv[]) {
             job.end = 0;
             for (int j = 0; j < N; j++)
             {
-                // DEPENDENCIA: DE QUEM O JOB I DEPENDE ( J -> I, JOB I DEPENDE DO J)
+                // VARRE TODAS AS LINHAS PARA A COLUNA I
+                // DEPENDENCIA: DE QUEM O JOB I DEPENDE ( J -> I, JOB I É DEPENDENTE DO J)
                 if (result.delay_time[j][i] > noDependentConstraintValue)
                     job.dependencies.push_back(j);
 
+                // VARRE TODAS AS COLUNAS PARA A LINHA I
                 // DEPENDENTES: QUEM O JOB I LIBERA ( I -> J, JOB J É DEPENDENTE DE I)
                 if (result.delay_time[i][j] > noDependentConstraintValue)
                     job.dependents.push_back(j);
